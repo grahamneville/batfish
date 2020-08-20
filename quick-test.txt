@@ -1,0 +1,392 @@
+docker pull batfish/allinone
+
+mkdir batfish-data
+touch batfish-data/test
+
+docker run --name batfish -v batfish-data:/data -p 8888:8888 -p 9997:9997 -p 9996:9996 batfish/allinone
+
+http://127.0.0.1:8888/?token=704a9742ce0dff745a7bb8da095d832dd0bb5b5cc687479a
+====================
+
+sudo apt-get update
+sudo apt-get install python3-venv
+python3 -m venv batfish-venv
+source batfish-venv/bin/activate
+pip3 install pybatfish
+
+
+mkdir example_grahamn
+cd example_grahamn
+mkdir configs
+mkdir hosts
+mkdir iptables
+mkdir batfish
+cd ..
+
+cat << EOF > configs/testsw1.cfg
+
+!
+version 15.2
+service timestamps debug datetime msec
+service timestamps log datetime msec
+!
+hostname as1core1
+!
+boot-start-marker
+boot-end-marker
+!
+!
+logging host 1.1.1.1
+logging host 2.2.2.2
+!
+!
+no aaa new-model
+no ip icmp rate-limit unreachable
+ip cef
+!
+!
+!
+!
+!
+!
+no ip domain lookup
+ip domain name lab.local
+no ipv6 cef
+!
+!
+multilink bundle-name authenticated
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip tcp synwait-time 5
+! 
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface Loopback0
+ ip address 1.10.1.1 255.255.255.255
+!
+interface Ethernet0/0
+ no ip address
+ shutdown
+ duplex auto
+!
+interface GigabitEthernet0/0
+ ip address 1.0.2.2 255.255.255.0
+ media-type gbic
+ speed 1000
+ duplex full
+ negotiation auto
+!
+interface GigabitEthernet1/0
+ ip address 1.0.1.2 255.255.255.0
+ negotiation auto
+!
+router ospf 1
+ router-id 1.10.1.1
+ network 1.0.0.0 0.255.255.255 area 1
+!
+router bgp 1
+ bgp router-id 1.10.1.1
+ bgp log-neighbor-changes
+ neighbor as1 peer-group
+ neighbor as1 remote-as 1
+ neighbor 1.1.1.1 peer-group as1
+ neighbor 1.1.1.1 update-source Loopback0
+ neighbor 1.2.2.2 peer-group as1
+ neighbor 1.2.2.2 update-source Loopback0
+ !
+ address-family ipv4
+  bgp dampening
+  bgp additional-paths select all
+  bgp additional-paths send receive
+  neighbor as1 send-community
+  neighbor as1 route-reflector-client
+  neighbor as1 advertise additional-paths all
+  neighbor 1.1.1.1 activate
+  neighbor 1.2.2.2 activate
+  maximum-paths 5
+ exit-address-family
+!
+ip forward-protocol nd
+!
+!
+no ip http server
+no ip http secure-server
+!
+!
+!
+!
+control-plane
+!
+!
+line con 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ stopbits 1
+line aux 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ stopbits 1
+line vty 0 4
+ login
+!
+!
+end
+EOF
+
+
+python3
+
+import pandas as pd
+from pybatfish.client.commands import *
+from pybatfish.datamodel import *
+from pybatfish.datamodel.answer import *
+from pybatfish.datamodel.flow import *
+from pybatfish.question import *
+from pybatfish.question import bfq
+
+bf_session.host = '127.0.0.1'
+
+bf_set_network('example_grahamn')
+
+SNAPSHOT_DIR = 'example_grahamn'
+bf_init_snapshot(SNAPSHOT_DIR, name='snapshot-20-08-2020-v2-grahamn', overwrite=True)
+
+
+
+use existing (if any)
+
+bf_set_network('example_grahamn')
+bf_set_snapshot('snapshot-20-08-2020-v2-grahamn')
+
+
+load_questions()
+
+
+bfq.initIssues().answer()
+
+
+
+bfq.interfaceProperties().answer().frame()
+
+
+status: TRYINGTOASSIGN
+.... no task information
+status: ASSIGNED
+.... 2020-08-20 22:18:46.723000+01:00 Begin job.
+status: TERMINATEDNORMALLY
+.... 2020-08-20 22:18:46.723000+01:00 Begin job.
+                      Interface Access_VLAN Active     All_Prefixes Allowed_VLANs Auto_State_VLAN  ... Switchport Switchport_Mode Switchport_Trunk_Encapsulation      VRF VRRP_Groups Zone_Name
+0         as1core1[Ethernet0/0]        None  False               []                          True  ...      False            NONE                          DOT1Q  default          []      None
+1           as1core1[Loopback0]        None   True  ['1.10.1.1/32']                          True  ...      False            NONE                          DOT1Q  default          []      None
+2  as1core1[GigabitEthernet1/0]        None   True   ['1.0.1.2/24']                          True  ...      False            NONE                          DOT1Q  default          []      None
+3  as1core1[GigabitEthernet0/0]        None   True   ['1.0.2.2/24']                          True  ...      False            NONE                          DOT1Q  default          []      None
+
+[4 rows x 35 columns]
+
+
+
+
+Unapplied ACLs:
+
+
+
+
+cat << EOF > configs/testsw2.cfg
+!
+version 15.2
+service timestamps debug datetime msec
+service timestamps log datetime msec
+!
+hostname testsw2
+!
+boot-start-marker
+boot-end-marker
+!
+!
+logging host 1.1.1.1
+logging host 2.2.2.2
+!
+!
+no aaa new-model
+no ip icmp rate-limit unreachable
+ip cef
+!
+!
+!
+!
+!
+!
+no ip domain lookup
+ip domain name lab.local
+no ipv6 cef
+!
+!
+multilink bundle-name authenticated
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip tcp synwait-time 5
+! 
+!
+!
+!
+!
+!
+!
+ip access-list extended testunappledacl
+ remark Do not allow host1 subnet to telnet out
+ deny tcp host 172.16.2.88 any eq telnet
+!
+!
+!
+!
+!
+interface Loopback0
+ ip address 1.10.1.1 255.255.255.255
+!
+interface Ethernet0/0
+ no ip address
+ shutdown
+ duplex auto
+!
+interface GigabitEthernet0/0
+ ip address 1.0.2.2 255.255.255.0
+ media-type gbic
+ speed 1000
+ duplex full
+ negotiation auto
+!
+interface GigabitEthernet1/0
+ ip address 1.0.1.2 255.255.255.0
+ negotiation auto
+!
+router ospf 1
+ router-id 1.10.1.1
+ network 1.0.0.0 0.255.255.255 area 1
+!
+router bgp 1
+ bgp router-id 1.10.1.1
+ bgp log-neighbor-changes
+ neighbor as1 peer-group
+ neighbor as1 remote-as 1
+ neighbor 1.1.1.1 peer-group as1
+ neighbor 1.1.1.1 update-source Loopback0
+ neighbor 1.2.2.2 peer-group as1
+ neighbor 1.2.2.2 update-source Loopback0
+ !
+ address-family ipv4
+  bgp dampening
+  bgp additional-paths select all
+  bgp additional-paths send receive
+  neighbor as1 send-community
+  neighbor as1 route-reflector-client
+  neighbor as1 advertise additional-paths all
+  neighbor 1.1.1.1 activate
+  neighbor 1.2.2.2 activate
+  maximum-paths 5
+ exit-address-family
+!
+ip forward-protocol nd
+!
+!
+no ip http server
+no ip http secure-server
+!
+!
+!
+!
+control-plane
+!
+!
+line con 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ stopbits 1
+line aux 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ stopbits 1
+line vty 0 4
+ login
+!
+!
+end
+EOF
+
+
+
+
+
+pybatfish.question.bfq.unusedStructures()
+
+
+
+bfq.unusedStructures().answer().frame()
+
+>>> bfq.unusedStructures().answer().frame()
+status: TRYINGTOASSIGN
+.... no task information
+status: ASSIGNED
+.... 2020-08-20 22:36:47.804000+01:00 Begin job.
+status: CHECKINGSTATUS
+.... 2020-08-20 22:36:47.804000+01:00 Begin job.
+status: TERMINATEDNORMALLY
+.... 2020-08-20 22:36:47.804000+01:00 Begin job.
+              Structure_Type   Structure_Name                      Source_Lines
+0  extended ipv4 access-list  testunappledacl  configs/testsw2.cfg:[48, 49, 50]
+
+
+
+
+
+>>> bfq.unusedStructures().answer().dict()
+status: TRYINGTOASSIGN
+.... no task information
+status: CHECKINGSTATUS
+.... 2020-08-20 22:39:03.552000+01:00 Begin job.
+status: TERMINATEDNORMALLY
+.... 2020-08-20 22:39:03.552000+01:00 Begin job.
+{'answerElements': [{'class': 'org.batfish.datamodel.table.TableAnswerElement', 'metadata': {'columnMetadata': [{'description': 'Vendor-specific type of the structure', 'isKey': True, 'isValue': False, 'name': 'Structure_Type', 'schema': 'String'}, {'description': 'Name of the structure', 'isKey': True, 'isValue': False, 'name': 'Structure_Name', 'schema': 'String'}, {'description': 'File and line numbers where the structure is defined', 'isKey': True, 'isValue': False, 'name': 'Source_Lines', 'schema': 'FileLines'}], 'textDesc': 'An unused structure of type ${Structure_Type} named ${Structure_Name} is defined at ${Source_Lines}.'}, 'excludedRows': [], 'rows': [{'Source_Lines': {'filename': 'configs/testsw2.cfg', 'lines': [48, 49, 50]}, 'Structure_Type': 'extended ipv4 access-list', 'Structure_Name': 'testunappledacl'}], 'summary': {'notes': 'Found 1 results', 'numFailed': 0, 'numPassed': 0, 'numResults': 1}}], 'question': {'class': 'org.batfish.question.UnusedStructuresQuestionPlugin$UnusedStructuresQuestion', 'nodes': '.*', 'assertion': None, 'differential': False, 'displayHints': None, 'exclusions': None, 'includeOneTableKeys': True, 'instance': {'description': 'Returns nodes with structures such as ACLs, routemaps, etc. that are defined but not used.', 'instanceName': '__unusedStructures_b9bdebe8-6d37-43e6-96d4-63a2d2854b4e', 'longDescription': 'Return nodes with structures such as ACLs, routes, etc. that are defined but not used. This may represent a bug in the configuration, which may have occurred because a final step in a template or MOP was not completed. Or it could be harmless extra configuration generated from a master template that is not meant to be used on those nodes.', 'orderedVariableNames': [], 'tags': ['hygiene'], 'variables': {'nodes': {'allowedValues': [], 'description': 'Look for unused structures on nodes matching this name or regex.', 'displayName': 'Nodes', 'fields': None, 'longDescription': None, 'minElements': None, 'minLength': None, 'optional': False, 'type': 'nodeSpec', 'value': '.*', 'values': []}}}}, 'status': 'SUCCESS', 'summary': {'notes': 'Found 1 results', 'numFailed': 0, 'numPassed': 0, 'numResults': 1}}
+
+
+
+answer = bfq.unusedStructures().answer().dict()
+
+>>> for item in answer['answerElements'][0]['rows']:
+...     print(item['Source_Lines']['filename'])
+... 
+configs/testsw2.cfg
+
+
+
+
+>>> for item in answer['answerElements'][0]['rows']:
+...     print(f"File:{item['Source_Lines']['filename']},Type:{item['Structure_Type']}")
+... 
+File:configs/testsw2.cfg,Type:extended ipv4 access-list
